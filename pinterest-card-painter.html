@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinterest Card Painter — Teachers' Day</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Playfair+Display:wght@400;700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f5f3; --ink:#1e1e1e; --muted:#6f6f6f; --panel:#fff; --stroke:rgba(0,0,0,.08);
+    --shadow:0 12px 30px rgba(0,0,0,.07), 0 2px 8px rgba(0,0,0,.04);
+    --accent:#b47c7c;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  header{padding:24px 18px 8px;text-align:center}
+  header h1{margin:0;font-family:'Playfair Display',serif;font-weight:700;letter-spacing:.2px}
+  header p{margin:6px 0 0;color:var(--muted)}
+
+  .shell{max-width:1200px;margin:0 auto;padding:12px 18px 28px;display:grid;grid-template-columns:320px 1fr;gap:18px}
+  @media (max-width:1000px){.shell{grid-template-columns:1fr}}
+
+  .panel{background:var(--panel);border:1px solid var(--stroke);border-radius:16px;box-shadow:var(--shadow)}
+  .toolbar{padding:14px}
+  .toolgroup{border:1px solid var(--stroke);border-radius:12px;padding:10px;margin-bottom:12px}
+  .toolgroup h3{margin:0 0 8px;font-size:12px;color:#777;letter-spacing:.12em;text-transform:uppercase}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .row label{font-size:13px;color:#555}
+  .row input[type="color"]{width:46px;height:32px;border:1px solid var(--stroke);border-radius:8px;background:#fff;padding:0}
+  .row input[type="range"]{flex:1}
+  .btn{border:0;background:#111;color:#fff;font-weight:700;border-radius:10px;padding:10px 12px;cursor:pointer}
+  .btn.ghost{background:#fff;color:#111;border:1px solid var(--stroke)}
+  .btn.warn{background:#b91c1c}
+  .btn:active{transform:translateY(1px)}
+
+  .stage{position:relative;display:flex;align-items:center;justify-content:center;padding:14px}
+  .card-wrap{position:relative;width:min(720px,95%);aspect-ratio:4/5;background:#fff;border-radius:18px;border:1px solid rgba(0,0,0,.06);box-shadow:var(--shadow);overflow:hidden}
+  .layer{position:absolute;inset:0}
+  #bgCanvas{z-index:0}
+  #drawCanvas{z-index:2}
+  #overlay{z-index:3;position:absolute;inset:0;pointer-events:none}
+  .note{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:rgba(255,255,255,.8);padding:6px 10px;border-radius:999px;border:1px solid rgba(0,0,0,.06);font-size:12px;color:#666}
+
+  /* draggable text / sticker */
+  .draggable{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);min-width:120px;min-height:40px;padding:4px 8px;border-radius:8px;border:1px dashed rgba(0,0,0,.2);background:rgba(255,255,255,.6);backdrop-filter:blur(2px);cursor:move;pointer-events:auto}
+  .draggable[contenteditable="true"]{cursor:text}
+  .drag-handle{position:absolute;right:6px;top:2px;font-size:12px;color:#666;cursor:move}
+  .resize{position:absolute;right:-6px;bottom:-6px;width:16px;height:16px;border-radius:4px;background:#111;opacity:.85;cursor:nwse-resize}
+  .selected{outline:2px solid #5b9bd5}
+
+  .bg-pills{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{border:1px solid var(--stroke);border-radius:999px;padding:8px 10px;font-weight:700;cursor:pointer;background:#fff}
+  .pill.active{background:#111;color:#fff}
+
+  .sticker-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+  .sticker{font-size:22px;line-height:38px;text-align:center;border:1px solid var(--stroke);border-radius:10px;background:#fff;cursor:pointer}
+
+  .footer-actions{display:flex;gap:10px;justify-content:flex-end;padding:12px;border-top:1px solid var(--stroke)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Teachers' Day — Pinterest Card Painter</h1>
+  <p>Paint, add text/stickers, switch chic backgrounds, and export as PNG. No installs. No bullshit.</p>
+</header>
+
+<main class="shell">
+  <!-- Toolbar -->
+  <aside class="panel toolbar">
+    <div class="toolgroup">
+      <h3>Backgrounds</h3>
+      <div class="bg-pills">
+        <button class="pill active" data-bg="blush">Blush Watercolor</button>
+        <button class="pill" data-bg="sage">Sage Linen</button>
+        <button class="pill" data-bg="marble">Marble White</button>
+        <button class="pill" data-bg="midnight">Midnight Velvet</button>
+      </div>
+    </div>
+
+    <div class="toolgroup">
+      <h3>Brush</h3>
+      <div class="row">
+        <label>Color</label><input type="color" id="brushColor" value="#1f2937">
+      </div>
+      <div class="row">
+        <label>Size</label><input type="range" id="brushSize" min="1" max="60" value="8">
+      </div>
+      <div class="row">
+        <button class="btn" id="penTool">Pen</button>
+        <button class="btn ghost" id="eraserTool">Eraser</button>
+        <button class="btn ghost" id="undoBtn">Undo</button>
+        <button class="btn ghost" id="redoBtn">Redo</button>
+        <button class="btn ghost" id="clearDraw">Clear</button>
+      </div>
+    </div>
+
+    <div class="toolgroup">
+      <h3>Text & Stickers</h3>
+      <div class="row">
+        <button class="btn" id="addText">Add Text</button>
+        <select id="fontFamily">
+          <option value="Playfair Display">Playfair (elegant)</option>
+          <option value="Inter">Inter (clean)</option>
+          <option value="Dancing Script">Dancing Script (handwritten)</option>
+        </select>
+        <input type="number" id="fontSize" value="28" min="12" max="96" style="width:80px">
+        <input type="color" id="fontColor" value="#1e1e1e">
+      </div>
+      <div class="sticker-grid" id="stickers">
+        <div class="sticker">🎓</div>
+        <div class="sticker">📚</div>
+        <div class="sticker">🍎</div>
+        <div class="sticker">✨</div>
+        <div class="sticker">💐</div>
+        <div class="sticker">🧡</div>
+        <div class="sticker">⭐</div>
+        <div class="sticker">🖊️</div>
+        <div class="sticker">✍️</div>
+        <div class="sticker">🌿</div>
+        <div class="sticker">📖</div>
+        <div class="sticker">🏅</div>
+      </div>
+    </div>
+
+    <div class="toolgroup">
+      <h3>Quick Message</h3>
+      <div class="row">
+        <button class="btn ghost" id="insertWarm">Insert Warm Wish</button>
+        <button class="btn ghost" id="insertFormal">Insert Formal Wish</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Stage -->
+  <section class="panel stage">
+    <div class="card-wrap" id="cardWrap">
+      <canvas class="layer" id="bgCanvas" width="1080" height="1350"></canvas>
+      <canvas class="layer" id="drawCanvas" width="1080" height="1350"></canvas>
+      <div id="overlay" class="layer"></div>
+      <div class="note">Drag text/stickers. Double‑click text to edit. Export → PNG.</div>
+    </div>
+    <div class="footer-actions layerless" style="position:absolute; bottom:8px; right:8px; left:8px;">
+      <button class="btn ghost" id="resetAll">Reset</button>
+      <button class="btn" id="exportPNG">Download PNG</button>
+    </div>
+  </section>
+</main>
+
+<script>
+// ====== Canvas setup ======
+const bgCanvas = document.getElementById('bgCanvas');
+const drawCanvas = document.getElementById('drawCanvas');
+const overlay = document.getElementById('overlay');
+const bgCtx = bgCanvas.getContext('2d');
+const drawCtx = drawCanvas.getContext('2d');
+const W = bgCanvas.width, H = bgCanvas.height;
+
+// ====== Background painters (4 chic styles) ======
+function paintBlush(){
+  // soft pink watercolor with gradient blobs + noise
+  const g = bgCtx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#fff7f8');
+  g.addColorStop(1,'#fdecef');
+  bgCtx.fillStyle = g; bgCtx.fillRect(0,0,W,H);
+
+  function blob(cx,cy,r,rgba){
+    const grd = bgCtx.createRadialGradient(cx,cy, r*0.1, cx,cy,r);
+    grd.addColorStop(0, rgba);
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    bgCtx.fillStyle = grd;
+    bgCtx.beginPath(); bgCtx.arc(cx,cy,r,0,Math.PI*2); bgCtx.fill();
+  }
+  blob(W*0.3,H*0.35,320,'rgba(244, 143, 177, .35)');
+  blob(W*0.7,H*0.65,360,'rgba(236, 72, 153, .22)');
+  blob(W*0.5,H*0.2,260,'rgba(244, 114, 182, .18)');
+  addNoise(0.06);
+}
+
+function paintSage(){
+  // sage linen: subtle green gradient with linen texture lines
+  const g = bgCtx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#f4faf6');
+  g.addColorStop(1,'#e9f3ed');
+  bgCtx.fillStyle = g; bgCtx.fillRect(0,0,W,H);
+
+  bgCtx.strokeStyle = 'rgba(120, 144, 120, 0.12)';
+  for(let y=0; y<H; y+=6){
+    bgCtx.beginPath(); bgCtx.moveTo(0,y); bgCtx.lineTo(W,y); bgCtx.stroke();
+  }
+  bgCtx.strokeStyle = 'rgba(120, 144, 120, 0.08)';
+  for(let x=0; x<W; x+=6){
+    bgCtx.beginPath(); bgCtx.moveTo(x,0); bgCtx.lineTo(x,H); bgCtx.stroke();
+  }
+  addNoise(0.05);
+}
+
+function paintMarble(){
+  // faux marble: white base + gentle gray veins
+  bgCtx.fillStyle = '#ffffff'; bgCtx.fillRect(0,0,W,H);
+  bgCtx.strokeStyle = 'rgba(0,0,0,0.08)';
+  bgCtx.lineWidth = 2;
+  for(let i=0; i<16; i++){
+    const startX = Math.random()*W*0.3;
+    const y = (i+1)*(H/18);
+    bgCtx.beginPath();
+    bgCtx.moveTo(startX,y);
+    for(let t=0; t<6; t++){
+      const dx = startX + t*(W/6) + (Math.random()*60-30);
+      const dy = y + (Math.random()*40-20);
+      bgCtx.quadraticCurveTo(dx,dy, dx+W/12, dy+(Math.random()*20-10));
+    }
+    bgCtx.stroke();
+  }
+  addNoise(0.04);
+}
+
+function paintMidnight(){
+  // midnight velvet: deep blue gradient + vignette + star dust
+  const g = bgCtx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1e2a44');
+  g.addColorStop(1,'#12182b');
+  bgCtx.fillStyle = g; bgCtx.fillRect(0,0,W,H);
+
+  // vignette
+  const v = bgCtx.createRadialGradient(W/2,H/2,200, W/2,H/2, Math.max(W,H));
+  v.addColorStop(0,'rgba(0,0,0,0)');
+  v.addColorStop(1,'rgba(0,0,0,0.35)');
+  bgCtx.fillStyle = v; bgCtx.fillRect(0,0,W,H);
+
+  // subtle stars
+  bgCtx.fillStyle = 'rgba(255,255,255,0.12)';
+  for(let i=0;i<220;i++){
+    bgCtx.beginPath();
+    const x = Math.random()*W; const y = Math.random()*H;
+    bgCtx.arc(x,y, Math.random()*1.2, 0, Math.PI*2); bgCtx.fill();
+  }
+}
+
+function addNoise(alpha=0.06){
+  const noise = bgCtx.createImageData(W,H);
+  for(let i=0;i<noise.data.length;i+=4){
+    const n = Math.random()*255;
+    noise.data[i]=noise.data[i+1]=noise.data[i+2]=n;
+    noise.data[i+3]=alpha*255;
+  }
+  bgCtx.putImageData(noise,0,0);
+}
+
+// Background switch logic
+const bgButtons = document.querySelectorAll('.pill');
+let currentBG = 'blush';
+function repaintBG(){
+  bgCtx.clearRect(0,0,W,H);
+  if(currentBG==='blush') paintBlush();
+  if(currentBG==='sage') paintSage();
+  if(currentBG==='marble') paintMarble();
+  if(currentBG==='midnight') paintMidnight();
+}
+bgButtons.forEach(b=>{
+  b.addEventListener('click', ()=>{
+    bgButtons.forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    currentBG = b.dataset.bg;
+    repaintBG();
+  });
+});
+
+// ====== Drawing tools ======
+const brushColor = document.getElementById('brushColor');
+const brushSize  = document.getElementById('brushSize');
+const penTool    = document.getElementById('penTool');
+const eraserTool = document.getElementById('eraserTool');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+const clearDraw = document.getElementById('clearDraw');
+
+let drawing=false, lastX=0, lastY=0, isEraser=false;
+let history=[], future=[];
+
+function pushHistory(){
+  if(history.length>25) history.shift();
+  history.push(drawCtx.getImageData(0,0,W,H));
+  future.length=0;
+}
+
+function onPointerDown(e){
+  const r = drawCanvas.getBoundingClientRect();
+  lastX = (e.clientX - r.left) * (W/r.width);
+  lastY = (e.clientY - r.top) * (H/r.height);
+  drawing = true;
+  pushHistory();
+  drawCtx.beginPath();
+  drawCtx.moveTo(lastX,lastY);
+}
+function onPointerMove(e){
+  if(!drawing) return;
+  const r = drawCanvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (W/r.width);
+  const y = (e.clientY - r.top) * (H/r.height);
+  drawCtx.lineCap = 'round';
+  drawCtx.lineJoin = 'round';
+  drawCtx.lineWidth = +brushSize.value;
+  if(isEraser){
+    drawCtx.globalCompositeOperation = 'destination-out';
+    drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+  }else{
+    drawCtx.globalCompositeOperation = 'source-over';
+    drawCtx.strokeStyle = brushColor.value;
+  }
+  drawCtx.lineTo(x,y);
+  drawCtx.stroke();
+  lastX=x; lastY=y;
+}
+function onPointerUp(){ drawing=false; drawCtx.closePath(); }
+
+drawCanvas.addEventListener('pointerdown', onPointerDown);
+window.addEventListener('pointermove', onPointerMove);
+window.addEventListener('pointerup', onPointerUp);
+
+penTool.addEventListener('click', (e)=>{ e.preventDefault(); isEraser=false; penTool.classList.remove('ghost'); eraserTool.classList.add('ghost'); });
+eraserTool.addEventListener('click', (e)=>{ e.preventDefault(); isEraser=true; eraserTool.classList.remove('ghost'); penTool.classList.add('ghost'); });
+
+undoBtn.addEventListener('click', ()=>{
+  if(history.length){
+    future.push(drawCtx.getImageData(0,0,W,H));
+    const img = history.pop();
+    drawCtx.putImageData(img,0,0);
+  }
+});
+redoBtn.addEventListener('click', ()=>{
+  if(future.length){
+    history.push(drawCtx.getImageData(0,0,W,H));
+    const img = future.pop();
+    drawCtx.putImageData(img,0,0);
+  }
+});
+clearDraw.addEventListener('click', ()=>{
+  pushHistory();
+  drawCtx.clearRect(0,0,W,H);
+});
+
+// ====== Text & Stickers (draggable/resizable) ======
+const addTextBtn = document.getElementById('addText');
+const fontFamily = document.getElementById('fontFamily');
+const fontSize = document.getElementById('fontSize');
+const fontColor = document.getElementById('fontColor');
+const stickers = document.getElementById('stickers');
+
+function createDraggable(content='Your text here'){
+  const el = document.createElement('div');
+  el.className = 'draggable';
+  el.contentEditable = true;
+  el.innerText = content;
+  el.style.fontFamily = fontFamily.value;
+  el.style.fontSize = fontSize.value + 'px';
+  el.style.color = fontColor.value;
+  el.style.left = '50%'; el.style.top='50%';
+  el.style.transform = 'translate(-50%,-50%)';
+  const handle = document.createElement('div');
+  handle.className = 'drag-handle';
+  handle.textContent = '⠿';
+  el.appendChild(handle);
+  const res = document.createElement('div');
+  res.className='resize';
+  el.appendChild(res);
+  overlay.appendChild(el);
+
+  let dragging=false, offsetX=0, offsetY=0;
+  handle.addEventListener('pointerdown', (e)=>{
+    dragging=true; el.classList.add('selected');
+    const r = el.getBoundingClientRect();
+    offsetX = e.clientX - r.left; offsetY = e.clientY - r.top;
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    const parent = overlay.getBoundingClientRect();
+    const x = e.clientX - parent.left - offsetX;
+    const y = e.clientY - parent.top - offsetY;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    el.style.transform = 'translate(0,0)';
+  });
+  window.addEventListener('pointerup', ()=>{ dragging=false; el.classList.remove('selected'); });
+
+  // resize
+  let resizing=false, startW=0, startH=0, startX=0, startY=0;
+  res.addEventListener('pointerdown', (e)=>{
+    const r = el.getBoundingClientRect();
+    resizing=true; startW=r.width; startH=r.height; startX=e.clientX; startY=e.clientY; e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e)=>{
+    if(!resizing) return;
+    const dx = e.clientX - startX; const dy = e.clientY - startY;
+    const scale = Math.max(0.5, Math.min(3, (startW+dx)/startW));
+    const base = parseInt(el.style.fontSize||fontSize.value,10);
+    el.style.fontSize = (base*scale) + 'px';
+  });
+  window.addEventListener('pointerup', ()=>{ resizing=false; });
+
+  // focus selection styling
+  el.addEventListener('focus', ()=>{ el.classList.add('selected'); });
+  el.addEventListener('blur', ()=>{ el.classList.remove('selected'); });
+
+  return el;
+}
+
+addTextBtn.addEventListener('click', ()=> createDraggable("Happy Teachers’ Day!"));
+
+stickers.addEventListener('click', (e)=>{
+  if(e.target.classList.contains('sticker')){
+    createDraggable(e.target.textContent);
+  }
+});
+
+// live style updates for selected text
+function selectedEditable(){
+  return overlay.querySelector('.draggable.selected, .draggable:focus');
+}
+fontFamily.addEventListener('change', ()=>{ const el=selectedEditable(); if(el) el.style.fontFamily=fontFamily.value; });
+fontSize.addEventListener('change', ()=>{ const el=selectedEditable(); if(el) el.style.fontSize=fontSize.value+'px'; });
+fontColor.addEventListener('change', ()=>{ const el=selectedEditable(); if(el) el.style.color=fontColor.value; });
+
+// ====== Quick Messages ======
+document.getElementById('insertWarm').addEventListener('click', ()=>{
+  const el = createDraggable("Dear Teacher,\\nThank you for believing in me and turning challenges into chances to learn. Happy Teachers’ Day!");
+  el.style.fontFamily = 'Playfair Display';
+  el.style.fontSize = '32px';
+});
+document.getElementById('insertFormal').addEventListener('click', ()=>{
+  const el = createDraggable("Respected Teacher,\\nWarm wishes on Teachers’ Day. Your dedication and wisdom inspire me daily.");
+  el.style.fontFamily = 'Inter';
+  el.style.fontSize = '28px';
+});
+
+// ====== Export PNG (compose layers) ======
+document.getElementById('exportPNG').addEventListener('click', ()=>{
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = W; exportCanvas.height = H;
+  const ctx = exportCanvas.getContext('2d');
+
+  // draw background + drawing
+  ctx.drawImage(bgCanvas,0,0);
+  ctx.drawImage(drawCanvas,0,0);
+
+  // draw each overlay element
+  overlay.querySelectorAll('.draggable').forEach(el=>{
+    const rect = el.getBoundingClientRect();
+    const parent = overlay.getBoundingClientRect();
+    const x = rect.left - parent.left;
+    const y = rect.top - parent.top;
+
+    // Style
+    const color = getComputedStyle(el).color;
+    const ff = getComputedStyle(el).fontFamily;
+    const fs = getComputedStyle(el).fontSize;
+    ctx.fillStyle = color;
+    ctx.font = `${fs} ${ff}`;
+    ctx.textBaseline = 'top';
+
+    const text = el.innerText.replace('⠿','').trim().split('\\n');
+    let lineY = y;
+    text.forEach(line=>{
+      ctx.fillText(line, x+6, lineY+4);
+      lineY += parseInt(fs,10) * 1.35;
+    });
+  });
+
+  const link = document.createElement('a');
+  link.download = 'teachers-day-card.png';
+  link.href = exportCanvas.toDataURL('image/png');
+  link.click();
+});
+
+// ====== Reset ======
+document.getElementById('resetAll').addEventListener('click', ()=>{
+  drawCtx.clearRect(0,0,W,H);
+  overlay.innerHTML='';
+  repaintBG();
+});
+
+// Initial paint
+repaintBG();
+</script>
+</body>
+</html>
